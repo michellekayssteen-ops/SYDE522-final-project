@@ -315,8 +315,15 @@ def main():
             lr = float(parts[3][2:])
             model = MLPModel(hidden_layers=hidden_layers, activation=activation, 
                            learning_rate=lr, max_iter=500)
-        
-        model.fit(data_dict['X_train'], data_dict['y_train'])
+            # MLP uses validation data for early stopping (consistent with sweep)
+            model.fit(
+                data_dict['X_train'], 
+                data_dict['y_train'],
+                data_dict['X_val'],
+                data_dict['y_val']
+            )
+        else:
+            model.fit(data_dict['X_train'], data_dict['y_train'])
         y_pred = model.predict(data_dict['X_test'])
         metrics = calculate_metrics(data_dict['y_test'], y_pred, data_dict['label_names'])
         best_results[config_name] = metrics
