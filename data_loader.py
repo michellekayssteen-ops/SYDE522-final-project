@@ -71,16 +71,51 @@ class WoundDatasetLoader:
                 df = pd.read_csv(csv_files[0])
                 print(f"Found CSV file: {csv_files[0]}")
                 # Try common column names for image paths and labels
+                # Use separate passes to avoid assigning same column to both variables
+                img_col = None
+                label_col = None
+                
+                # First pass: find image column (prioritize exact matches)
                 for col in df.columns:
-                    if 'image' in col.lower() or 'file' in col.lower() or 'path' in col.lower():
+                    col_lower = col.lower()
+                    # Check for image-related keywords, but exclude label-related keywords
+                    if (('image' in col_lower or 'file' in col_lower or 'path' in col_lower) and
+                        'label' not in col_lower and 'class' not in col_lower and 'type' not in col_lower):
                         img_col = col
-                    if 'label' in col.lower() or 'class' in col.lower() or 'type' in col.lower():
+                        break  # Take first match
+                
+                # If no exclusive match found, try any image-related column
+                if img_col is None:
+                    for col in df.columns:
+                        col_lower = col.lower()
+                        if 'image' in col_lower or 'file' in col_lower or 'path' in col_lower:
+                            img_col = col
+                            break
+                
+                # Second pass: find label column (exclude the image column)
+                for col in df.columns:
+                    if col == img_col:
+                        continue  # Skip the image column
+                    col_lower = col.lower()
+                    if 'label' in col_lower or 'class' in col_lower or 'type' in col_lower:
                         label_col = col
-                if 'img_col' in locals() and 'label_col' in locals():
+                        break  # Take first match
+                
+                # Validate that we found both columns and they're different
+                if img_col is not None and label_col is not None and img_col != label_col:
                     for _, row in df.iterrows():
                         img_path_str = str(row[img_col])
                         label_dict[img_path_str] = str(row[label_col])
                     print(f"Loaded {len(label_dict)} label mappings from CSV")
+                    print(f"  Image column: {img_col}, Label column: {label_col}")
+                else:
+                    if img_col is None:
+                        print("Warning: Could not identify image column in CSV")
+                    if label_col is None:
+                        print("Warning: Could not identify label column in CSV")
+                    if img_col == label_col:
+                        print(f"Warning: Image and label columns are the same: {img_col}")
+                    print("Skipping CSV label loading, will use directory/filename-based labels")
             except Exception as e:
                 print(f"Could not read CSV file: {e}")
         
@@ -134,7 +169,8 @@ class WoundDatasetLoader:
                             label = potential_label
                             label_sources['directory'] += 1
                         # If first directory is skipped, try second
-                        elif len(parts) > 2:
+                        # parts[1] exists since we're already in len(parts) > 1 block
+                        else:
                             potential_label = parts[1]
                             if potential_label.lower() not in skip_folders:
                                 label = potential_label
