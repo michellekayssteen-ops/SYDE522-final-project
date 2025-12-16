@@ -62,18 +62,141 @@ class WoundDatasetLoader:
         
         print(f"Found {len(image_files)} image files")
         
+        # Try to find a CSV file with labels
+        csv_files = list(dataset_path.rglob('*.csv'))
+        label_dict = {}
+        if csv_files:
+            try:
+                import pandas as pd
+                df = pd.read_csv(csv_files[0])
+                print(f"Found CSV file: {csv_files[0]}")
+                # Try common column names for image paths and labels
+                for col in df.columns:
+                    if 'image' in col.lower() or 'file' in col.lower() or 'path' in col.lower():
+                        img_col = col
+                    if 'label' in col.lower() or 'class' in col.lower() or 'type' in col.lower():
+                        label_col = col
+                if 'img_col' in locals() and 'label_col' in locals():
+                    for _, row in df.iterrows():
+                        img_path_str = str(row[img_col])
+                        label_dict[img_path_str] = str(row[label_col])
+                    print(f"Loaded {len(label_dict)} label mappings from CSV")
+            except Exception as e:
+                print(f"Could not read CSV file: {e}")
+        
+        # Track label sources for debugging
+        label_sources = {'directory': 0, 'filename': 0, 'csv': 0}
+        
         for img_path in image_files:
             try:
-                # Try to extract label from directory structure
-                # Common structure: dataset_path/class_name/image.jpg
-                parts = img_path.parts
-                dataset_idx = parts.index(dataset_path.name) if dataset_path.name in parts else -1
+                label = None
                 
-                if dataset_idx >= 0 and len(parts) > dataset_idx + 1:
-                    label = parts[dataset_idx + 1]
-                else:
-                    # Try to extract from filename
-                    label = img_path.stem.split('_')[0] if '_' in img_path.stem else img_path.stem
+                # First, try CSV mapping
+                img_path_str = str(img_path)
+                img_path_relative = str(img_path.relative_to(dataset_path))
+                if img_path_str in label_dict:
+                    label = label_dict[img_path_str]
+                    label_sources['csv'] += 1
+                elif img_path_relative in label_dict:
+                    label = label_dict[img_path_relative]
+                    label_sources['csv'] += 1
+                elif img_path.name in label_dict:
+                    label = label_dict[img_path.name]
+                    label_sources['csv'] += 1
+                
+                # If not in CSV, try directory structure
+                if label is None:
+                    # Use relative path to dataset root
+                    try:
+                        rel_path = img_path.relative_to(dataset_path)
+                        parts = rel_path.parts
+                    except:
+                        # If relative path fails, use absolute path
+                        parts = img_path.parts
+                        try:
+                            dataset_idx = parts.index(dataset_path.name)
+                            # Get parts after dataset root
+                            parts = parts[dataset_idx + 1:]
+                        except ValueError:
+                            parts = img_path.parts
+                    
+                    # Skip common non-class folder names
+                    skip_folders = {'images', 'data', 'train', 'test', 'val', 'validation', 
+                                   'wound-dataset', 'wound_dataset', 'wounddataset',
+                                   'dataset', 'datasets', 'wounds', 'wound'}
+                    
+                    # Try to get label from subdirectory (first non-skipped directory)
+                    if len(parts) > 1:
+                        # parts[0] is the first subdirectory after dataset root
+                        # This should be the class name (e.g., "Abrasions", "Bruises")
+                        potential_label = parts[0]
+                        if potential_label.lower() not in skip_folders:
+                            label = potential_label
+                            label_sources['directory'] += 1
+                        # If first directory is skipped, try second
+                        elif len(parts) > 2:
+                            potential_label = parts[1]
+                            if potential_label.lower() not in skip_folders:
+                                label = potential_label
+                                label_sources['directory'] += 1
+                
+                # If still no label, try filename patterns
+                if label is None:
+                    stem = img_path.stem.lower()
+                    # Common wound type keywords
+                    wound_types = ['laceration', 'abrasion', 'burn', 'avulsion', 'surgical', 
+                                  'cut', 'wound', 'injury', 'trauma']
+                    
+                    # Check if any wound type keyword is in the filename
+                    found_type = None
+                    for wound_type in wound_types:
+                        if wound_type in stem:
+                            found_type = wound_type
+                            break
+                    
+                    if found_type:
+                        # Map to standard names
+                        if found_type in ['cut', 'laceration']:
+                            label = 'laceration'
+                        elif found_type in ['abrasion', 'scratch']:
+                            label = 'abrasion'
+                        elif found_type == 'burn':
+                            label = 'burn'
+                        elif found_type in ['avulsion', 'tear']:
+                            label = 'avulsion'
+                        elif found_type in ['surgical', 'surgery']:
+                            label = 'surgical'
+                        else:
+                            label = found_type
+                        label_sources['filename'] += 1
+                    elif '_' in stem:
+                        # Try splitting by underscore
+                        parts = stem.split('_')
+                        # Try first or last part as class
+                        for part in [parts[0], parts[-1]]:
+                            if len(part) > 2 and part.isalpha():
+                                label = part
+                                label_sources['filename'] += 1
+                                break
+                    
+                    # Last resort: use a default label (this will cause issues but helps debug)
+                    if label is None:
+                        label = 'unknown'
+                        label_sources['filename'] += 1
+                
+                # Normalize label (lowercase, strip whitespace)
+                label = str(label).lower().strip()
+                
+                # Clean up common variations
+                label_mapping = {
+                    'wound_dataset': 'unknown',  # Common placeholder name
+                    'wound-dataset': 'unknown',
+                    'dataset': 'unknown',
+                    'image': 'unknown',
+                    'img': 'unknown',
+                }
+                if label in label_mapping:
+                    label = label_mapping[label]
                 
                 # Load and preprocess image
                 img = Image.open(img_path).convert('RGB')
@@ -93,6 +216,31 @@ class WoundDatasetLoader:
             except Exception as e:
                 print(f"Error loading {img_path}: {e}")
                 continue
+        
+        print(f"Label sources: {label_sources}")
+        print(f"Unique labels found: {len(set(labels))}")
+        print(f"Label distribution: {dict(zip(*np.unique(labels, return_counts=True)))}")
+        
+        unique_labels = set(labels)
+        if len(unique_labels) < 2:
+            error_msg = (
+                f"\n{'='*60}\n"
+                f"ERROR: Only found {len(unique_labels)} unique class(es): {unique_labels}\n"
+                f"Classification requires at least 2 classes.\n"
+                f"{'='*60}\n"
+                f"Possible issues:\n"
+                f"1. All images are in a single folder without class subdirectories\n"
+                f"2. Labels are in a CSV file that wasn't found or parsed correctly\n"
+                f"3. Filenames don't contain class information\n"
+                f"\nDataset structure should be one of:\n"
+                f"  Option A: dataset/class1/image1.jpg, dataset/class2/image2.jpg, ...\n"
+                f"  Option B: dataset/images.csv with 'image' and 'label' columns\n"
+                f"  Option C: Filenames like 'class1_image1.jpg' or 'image1_class1.jpg'\n"
+                f"\nCurrent dataset path: {dataset_path}\n"
+                f"Please check the dataset structure and ensure images are organized by class.\n"
+                f"{'='*60}"
+            )
+            raise ValueError(error_msg)
         
         return np.array(images), np.array(labels)
     
@@ -224,6 +372,27 @@ class WoundDatasetLoader:
         print(f"Train set: {X_train.shape[0]} samples")
         print(f"Validation set: {X_val.shape[0]} samples")
         print(f"Test set: {X_test.shape[0]} samples")
+        
+        # Validate that we have multiple classes in each split
+        train_classes = len(np.unique(y_train))
+        val_classes = len(np.unique(y_val))
+        test_classes = len(np.unique(y_test))
+        
+        print(f"Classes in train: {train_classes}, val: {val_classes}, test: {test_classes}")
+        print(f"Train class distribution: {dict(zip(*np.unique(y_train, return_counts=True)))}")
+        
+        if train_classes < 2:
+            raise ValueError(
+                f"Training set has only {train_classes} class(es). "
+                f"Classification requires at least 2 classes. "
+                f"Train labels: {np.unique(y_train)}"
+            )
+        
+        if val_classes < 2:
+            print(f"Warning: Validation set has only {val_classes} class(es)")
+        
+        if test_classes < 2:
+            print(f"Warning: Test set has only {test_classes} class(es)")
         
         return {
             'X_train': X_train,

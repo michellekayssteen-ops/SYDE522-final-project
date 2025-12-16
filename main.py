@@ -308,7 +308,9 @@ def main():
             parts = config_name.split('_')
             # Parse hidden layers (e.g., "(100,)" or "(200, 100)")
             hidden_str = parts[1]
-            hidden_layers = tuple(map(int, hidden_str.strip('()').split(',')))
+            # Strip parentheses and split by comma, filter out empty strings
+            hidden_values = [int(x.strip()) for x in hidden_str.strip('()').split(',') if x.strip()]
+            hidden_layers = tuple(hidden_values)
             activation = parts[2]
             lr = float(parts[3][2:])
             model = MLPModel(hidden_layers=hidden_layers, activation=activation, 

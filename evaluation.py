@@ -87,7 +87,18 @@ def plot_metrics_comparison(results_dict, save_path=None):
     
     for idx, metric in enumerate(metrics_to_plot):
         values = [results_dict[model][metric] for model in models]
-        axes[idx].bar(models, values, alpha=0.7)
+        # Extract std values if available, otherwise use zero (for single-run results)
+        std_values = []
+        for model in models:
+            std_key = f'{metric}_std'
+            if std_key in results_dict[model]:
+                std_values.append(results_dict[model][std_key])
+            else:
+                std_values.append(0.0)  # Effectively zero for deterministic results
+        
+        # Plot bars with error bars (even if zero-width)
+        axes[idx].bar(models, values, alpha=0.7, yerr=std_values, capsize=5, 
+                     error_kw={'elinewidth': 1, 'capthick': 1})
         axes[idx].set_title(f'{metric.replace("_", " ").title()}')
         axes[idx].set_ylabel('Score')
         axes[idx].set_ylim([0, 1])
@@ -124,8 +135,16 @@ def plot_per_class_metrics(results_dict, metric_name, save_path=None):
     
     for i, model in enumerate(models):
         values = [results_dict[model][metric_name][cls] for cls in classes]
+        # Extract std values if available, otherwise use zero (for single-run results)
+        std_key = f'{metric_name}_std'
+        if std_key in results_dict[model] and isinstance(results_dict[model][std_key], dict):
+            std_values = [results_dict[model][std_key].get(cls, 0.0) for cls in classes]
+        else:
+            std_values = [0.0] * len(classes)  # Effectively zero for deterministic results
+        
         offset = (i - len(models)/2 + 0.5) * width
-        ax.bar(x + offset, values, width, label=model, alpha=0.7)
+        ax.bar(x + offset, values, width, label=model, alpha=0.7, 
+              yerr=std_values, capsize=3, error_kw={'elinewidth': 1, 'capthick': 1})
     
     ax.set_xlabel('Class')
     ax.set_ylabel(metric_name.replace('_', ' ').title())
