@@ -1,12 +1,3 @@
-# Automatic Wound Image Classification Using Machine Learning
-
-This project implements and compares classical and neural-network-based machine learning algorithms for classifying wound images into clinically relevant categories.
-
-## Authors
-- Simrat Puar (spuar@uwaterloo.ca)
-- Michelle Steen (mksteen@uwaterloo.ca)
-
-## Project Overview
 
 This work explores the use of machine-learning algorithms to classify wound images into seven clinically relevant wound types: **abrasions, bruises, burns, cut, ingrown nails, laceration, and stab wounds**. The project uses the publicly available wound-dataset from Kaggle and evaluates three classical machine learning algorithms with ResNet18 feature extraction.
 
@@ -106,10 +97,75 @@ The script will:
 4. Make a prediction
 5. Display the predicted class and class probabilities
 
+### Comparing with LLM Vision Models
+
+To compare your trained ML models (SVM, MLP, kNN) with Gemini vision capabilities:
+
+**Prerequisites:**
+1. Install additional dependencies:
+```bash
+pip install google-genai google-generativeai
+```
+
+2. Set up API key as environment variable:
+
+**For Windows PowerShell (current session only):**
+```powershell
+# For Gemini (Google)
+$env:GOOGLE_API_KEY="your-google-api-key-here"
+```
+
+**For Windows Command Prompt (current session only):**
+```cmd
+set GOOGLE_API_KEY=your-google-api-key-here
+```
+
+**For Windows (permanent - all future sessions):**
+1. Open System Properties → Environment Variables
+2. Under "User variables", click "New"
+3. Variable name: `GOOGLE_API_KEY`, Variable value: `your-google-api-key-here`
+4. Restart your terminal/PowerShell
+
+**For Linux/Mac (current session):**
+```bash
+export GOOGLE_API_KEY="your-google-api-key-here"
+```
+
+**Running the comparison:**
+```bash
+python compare_with_llms.py
+```
+
+**Options:**
+- `--max-images N`: Limit evaluation to N test images (useful for reducing API costs during testing)
+
+**Example with limited images:**
+```bash
+python compare_with_llms.py --max-images 20
+```
+
+The script will:
+1. Load the test dataset
+2. Get predictions from your best SVM, MLP, and kNN models
+3. Get predictions from ChatGPT, Claude, and Gemini (if API keys are set)
+4. Calculate and compare accuracy, precision, recall, and F1-scores
+5. Generate comparison visualizations and reports in the `results/` directory
+
+**Output files:**
+- `results/llm_comparison_results.json`: Detailed metrics in JSON format
+- `results/llm_comparison_report.txt`: Human-readable comparison report
+- `results/llm_comparison_metrics.png`: Bar chart comparing overall metrics
+- `results/llm_comparison_f1_per_class.png`: Per-class F1-score comparison
+- `results/confusion_matrix_*.png`: Confusion matrices for each model
+
+**Note:** LLM API calls incur costs. The script will prompt for confirmation before making API calls. Use `--max-images` to test with a smaller subset first.
+
 ## Project Structure
 
 - `main.py` - Main experiment runner with full hyperparameter search
 - `quick_test.py` - Quick test script to verify setup
+- `compare_with_llms.py` - Comparison script for ML models vs LLM vision models (ChatGPT, Claude, Gemini)
+- `test_image.py` - Script to test individual images with trained models
 - `data_loader.py` - Dataset download and preprocessing
 - `feature_extraction.py` - Feature extraction using ResNet (addresses large input space)
 - `models.py` - kNN, SVM, and MLP implementations
